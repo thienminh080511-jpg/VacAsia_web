@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search — VacAsia</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Firebase Configuration & Initialization -->
+  <script src="firebaseConfig.js"></script>
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+  <main class="page-container">
+    <header class="topbar">
+      <a class="brand" href="VAmain.html">VacAsia</a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="VAmain.html">Home</a>
+        <a href="search.html">Search</a>
+        <a href="favorites.html">Favorites</a>
+        <a href="booking.html">Booking</a>
+        <a href="history.html">History</a>
+        <a href="about.html">About</a>
+        <a href="contact.html">Contact</a>
+      </nav>
+    </header>
+
+    <section class="post-header">
+      <div class="post-header-inner">
+        <p class="post-category">Search</p>
+        <h1>Find destinations across Asia</h1>
+        <p class="post-date">Search by country, style, budget, and travel type</p>
+      </div>
+    </section>
+
+    <section class="content-layout">
+      <article class="post-content">
+        <section class="content-block">
+          <h2>Search filters</h2>
+          <form class="form-card">
+            <label>
+              Destination name
+              <input type="text" placeholder="Tokyo, Bali, Seoul" />
+            </label>
+            <label>
+              Travel style
+              <select>
+                <option>Beach</option>
+                <option>City</option>
+                <option>Nature</option>
+                <option>Adventure</option>
+                <option>Culture</option>
+                <option>Family</option>
+              </select>
+            </label>
+            <label>
+              Budget
+              <select>
+                <option>Under $1000</option>
+                <option>$1000–$2000</option>
+                <option>$2000–$3000</option>
+                <option>Above $3000</option>
+              </select>
+            </label>
+            <button class="button" type="submit">Search destinations</button>
+          </form>
+        </section>
+
+        <section class="content-block">
+          <h2>Sample results</h2>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <h3>Tokyo, Japan</h3>
+              <p>Modern city scenes, cultural sites, family-friendly attractions, and food markets.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Phuket, Thailand</h3>
+              <p>Beach resorts, island hopping, local cuisine, and easy family activities.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Bali, Indonesia</h3>
+              <p>Wellness retreats, rice terraces, scenic beaches, and cultural villages.</p>
+            </article>
+          </div>
+        </section>
+      </article>
+
+      <aside class="sidebar">
+        <div class="info-card">
+          <h4>Search tips</h4>
+          <ul>
+            <li>Use travel style to narrow results</li>
+            <li>Select season for the best weather</li>
+            <li>Sort by popularity or budget</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="site-footer">
+      <p>VacAsia | Discover vacation inspiration across Asia.</p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Booking History — VacAsia</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Firebase Configuration & Initialization -->
+  <script src="firebaseConfig.js"></script>
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+  <main class="page-container">
+    <header class="topbar">
+      <a class="brand" href="VAmain.html">VacAsia</a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="VAmain.html">Home</a>
+        <a href="search.html">Search</a>
+        <a href="favorites.html">Favorites</a>
+        <a href="booking.html">Booking</a>
+        <a href="history.html">History</a>
+        <a href="about.html">About</a>
+        <a href="contact.html">Contact</a>
+      </nav>
+    </header>
+
+    <section class="post-header">
+      <div class="post-header-inner">
+        <p class="post-category">History</p>
+        <h1>Your VacAsia booking history</h1>
+        <p class="post-date">Review past and upcoming trips</p>
+      </div>
+    </section>
+
+    <section class="content-layout">
+      <article class="post-content">
+        <section class="content-block">
+          <h2>Completed bookings</h2>
+          <ul>
+            <li>Kyoto, Japan — Completed</li>
+            <li>Hanoi, Vietnam — Completed</li>
+          </ul>
+        </section>
+
+        <section class="content-block">
+          <h2>Upcoming trips</h2>
+          <ul>
+            <li>Phuket, Thailand — Booked</li>
+            <li>Bali, Indonesia — Reserved</li>
+          </ul>
+        </section>
+      </article>
+
+      <aside class="sidebar">
+        <div class="info-card">
+          <h4>History notes</h4>
+          <ul>
+            <li>Track completed and booked trips</li>
+            <li>Use history to plan future trips</li>
+            <li>Update details before travel</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="site-footer">
+      <p>VacAsia | Discover vacation inspiration across Asia.</p>
+    </footer>
+  </main>
+</body>
+</html>
