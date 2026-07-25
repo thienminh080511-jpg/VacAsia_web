@@ -8,16 +8,13 @@
 // ============================================================================
 
 const firebaseConfig = {
-  // Get these values from your Firebase Project Settings
-  // https://console.firebase.google.com/project/YOUR_PROJECT_ID/settings/general
-  
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID" // Optional: for Google Analytics
+  apiKey: "AIzaSyCH0YzjTb5GE7mSsXwApl2xX2AdRI78bZk",
+  authDomain: "vacasia-27c13.firebaseapp.com",
+  projectId: "vacasia-27c13",
+  storageBucket: "vacasia-27c13.firebasestorage.app",
+  messagingSenderId: "888605199877",
+  appId: "1:888605199877:web:79405879236c2245c1d66c",
+  measurementId: "G-552R0WD1L4"
 };
 
 // ============================================================================
@@ -32,6 +29,7 @@ async function initializeFirebase() {
     const { getFirestore, enableIndexedDbPersistence } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js');
     const { getAuth } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js');
     const { getStorage } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js');
+    const { getAnalytics } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics.js');
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
@@ -56,6 +54,9 @@ async function initializeFirebase() {
 
     // Initialize Storage
     window.storage = getStorage(app);
+
+    // Initialize Analytics
+    window.analytics = getAnalytics(app);
 
     console.log('Firebase initialized successfully');
     return true;

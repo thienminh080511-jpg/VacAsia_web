@@ -65,6 +65,53 @@ function toggleMobileMenu() {
 }
 
 /**
+ * Theme toggle helpers
+ */
+const THEME_STORAGE_KEY = 'vacasia-theme';
+
+function getStoredTheme() {
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    return savedTheme;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+  const toggle = document.querySelector('.theme-toggle');
+  if (toggle) {
+    const isDark = theme === 'dark';
+    toggle.innerHTML = `<span class="theme-toggle-icon">${isDark ? '🌙' : '☀️'}</span>`;
+    toggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+    toggle.setAttribute('title', isDark ? 'Dark mode is on' : 'Light mode is on');
+    toggle.setAttribute('aria-pressed', String(isDark));
+  }
+}
+
+function initializeThemeToggle() {
+  let toggle = document.querySelector('.theme-toggle');
+
+  if (!toggle) {
+    toggle = document.createElement('button');
+    toggle.className = 'theme-toggle';
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', 'Toggle color theme');
+    document.body.appendChild(toggle);
+  }
+
+  setTheme(getStoredTheme());
+
+  toggle.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+  });
+}
+
+/**
  * Show notification/toast message
  * @param {string} message - Message to display
  * @param {string} type - Type: 'success', 'error', 'info', 'warning'
@@ -111,6 +158,7 @@ function showLoadingSpinner(show = true) {
   }
 }
 
+window.addEventListener('DOMContentLoaded', initializeThemeToggle);
 // ============================================================================
 // LOCAL STORAGE FUNCTIONS (for offline data management)
 // ============================================================================
