@@ -111,6 +111,24 @@ function initializeThemeToggle() {
   });
 }
 
+function initializeTopbarScrollState() {
+  const topbar = document.querySelector('.topbar');
+  if (!topbar) {
+    return;
+  }
+
+  const onScroll = () => {
+    if (window.scrollY > 24) {
+      topbar.classList.add('shrink');
+    } else {
+      topbar.classList.remove('shrink');
+    }
+  };
+
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+}
+
 /**
  * Show notification/toast message
  * @param {string} message - Message to display
@@ -159,6 +177,7 @@ function showLoadingSpinner(show = true) {
 }
 
 window.addEventListener('DOMContentLoaded', initializeThemeToggle);
+document.addEventListener('DOMContentLoaded', initializeTopbarScrollState);
 // ============================================================================
 // LOCAL STORAGE FUNCTIONS (for offline data management)
 // ============================================================================
@@ -520,6 +539,83 @@ async function updateBookingStatus(bookingId, status) {
  */
 async function cancelBooking(bookingId) {
   return updateBookingStatus(bookingId, 'cancelled');
+}
+
+// ============================================================================
+// TRANSACTION MANAGEMENT
+// ============================================================================
+
+/**
+ * Create a new transaction record for a booking payment or reservation.
+ * @param {Object} transactionData
+ * @returns {string|null} Transaction ID
+ */
+function createTransaction(transactionData) {
+  try {
+    const transaction = {
+      ...transactionData,
+      status: transactionData.status || 'pending',
+      currency: transactionData.currency || 'USD',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const transactions = getFromLocalStorage('transactions', {});
+    const transactionId = `txn_${Date.now()}`;
+    transactions[transactionId] = transaction;
+    saveToLocalStorage('transactions', transactions);
+
+    showNotification('Transaction saved successfully!', 'success');
+    return transactionId;
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    showNotification('Error creating transaction', 'error');
+    return null;
+  }
+}
+
+/**
+ * Get all transactions as an object keyed by transaction ID.
+ * @returns {Object}
+ */
+function getTransactions() {
+  return getFromLocalStorage('transactions', {});
+}
+
+/**
+ * Get a transaction by ID.
+ * @param {string} transactionId
+ * @returns {Object|null}
+ */
+function getTransaction(transactionId) {
+  const transactions = getTransactions();
+  return transactions[transactionId] || null;
+}
+
+/**
+ * Update transaction status.
+ * @param {string} transactionId
+ * @param {string} status
+ * @returns {boolean}
+ */
+function updateTransactionStatus(transactionId, status) {
+  try {
+    const transactions = getTransactions();
+    if (!transactions[transactionId]) {
+      return false;
+    }
+
+    transactions[transactionId].status = status;
+    transactions[transactionId].updatedAt = new Date().toISOString();
+    saveToLocalStorage('transactions', transactions);
+
+    showNotification('Transaction updated', 'success');
+    return true;
+  } catch (error) {
+    console.error('Error updating transaction:', error);
+    showNotification('Error updating transaction', 'error');
+    return false;
+  }
 }
 
 // ============================================================================
@@ -969,6 +1065,12 @@ if (typeof module !== 'undefined' && module.exports) {
     getBooking,
     updateBookingStatus,
     cancelBooking,
+
+    // Transactions
+    createTransaction,
+    getTransactions,
+    getTransaction,
+    updateTransactionStatus,
     
     // User & Auth
     getCurrentUser,

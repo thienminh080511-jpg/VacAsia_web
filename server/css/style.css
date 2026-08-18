@@ -133,13 +133,30 @@ a:hover {
   justify-content: space-between;
   padding: 1.5rem 2rem;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 20px;
   box-shadow: var(--shadow-sm);
   position: sticky;
   top: 0;
   z-index: 100;
   gap: 2rem;
   margin-bottom: 2rem;
+  transition: padding 0.2s ease, gap 0.2s ease, border-radius 0.2s ease, box-shadow 0.2s ease;
+}
+
+.topbar.shrink {
+  padding: 0.8rem 1.5rem;
+  gap: 1rem;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.topbar.shrink .brand {
+  font-size: 1.35rem;
+}
+
+.topbar.shrink .nav-links {
+  gap: 1rem;
 }
 
 .brand {
@@ -330,6 +347,70 @@ a:hover {
 
 .content-block li {
   margin-bottom: 0.85rem;
+}
+
+.transaction-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+}
+
+.transaction-list li {
+  list-style: none;
+}
+
+.transaction-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.transaction-row:first-child {
+  border-top: none;
+}
+
+.transaction-title {
+  display: block;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.transaction-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.transaction-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.transaction-status {
+  padding: 0.2rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.transaction-status.success {
+  background: #eaf8ee;
+  color: #1d7a3d;
+}
+
+.transaction-status.pending {
+  background: #fff7dd;
+  color: #8a6500;
+}
+
+.transaction-amount {
+  font-weight: 800;
+  color: var(--accent-strong);
 }
 
 .feature-grid {
