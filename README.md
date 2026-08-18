@@ -1,2 +1,2 @@
 # VacAsia_web
-Asian Vacation Website
+Asian Vacation Website. UI in progress, destined to change.
