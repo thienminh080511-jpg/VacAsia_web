@@ -1,97 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Booking — VacAsia</title>
-  <link rel="icon" href="https://media.ultimaps.com/maps/asia/downloads/ultimaps-blank-map-of-asia-hq.png" type="image/png" />
-  <link rel="stylesheet" href="../css/style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174b43">
+  <meta name="description" content="Find your next Asian escape. Discover destinations, make a personal travel plan, save your favorites, and try demo experience bookings with VacAsia.">
+  <title>VacAsia — A little closer to extraordinary</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <!-- Firebase Configuration & Initialization -->
-  <script src="../../js/firebaseConfig.js"></script>
-  <!-- Main Application Script -->
-  <script src="../../js/app.js"></script>
-  <main class="page-container">
-    <header class="topbar">
-      <a class="brand" href="VAmain.html">VacAsia</a>
-      <nav class="nav-links" aria-label="Primary navigation">
-        <a href="VAmain.html">Home</a>
-        <a href="search.html">Search</a>
-        <a href="favorites.html">Favorites</a>
-        <a href="booking.html">Booking</a>
-        <a href="transaction.html">Transactions</a>
-        <a href="history.html">History</a>
-        <a href="about.html">About</a>
-        <a href="contact.html">Contact</a>
-      </nav>
-    </header>
-
-    <section class="post-header">
-      <div class="post-header-inner">
-        <p class="post-category">Booking</p>
-        <h1>Book your next Asian trip</h1>
-        <p class="post-date">Choose travel dates, travelers, and tickets</p>
-      </div>
-    </section>
-
-    <section class="content-layout">
-      <article class="post-content">
-        <section class="content-block">
-          <h2>Trip details</h2>
-          <form class="form-card">
-            <label>
-              Destination
-              <input type="text" placeholder="Kyoto, Japan" />
-            </label>
-            <label>
-              Travel date
-              <input type="date" />
-            </label>
-            <label>
-              Travelers
-              <select>
-                <option>1 traveler</option>
-                <option>2 travelers</option>
-                <option>3 travelers</option>
-                <option>4 travelers</option>
-              </select>
-            </label>
-            <label>
-              Ticket quantity
-              <select>
-                <option>1 ticket</option>
-                <option>2 tickets</option>
-                <option>3 tickets</option>
-                <option>4 tickets</option>
-              </select>
-            </label>
-            <button class="button" type="submit">Calculate price</button>
-          </form>
-        </section>
-
-        <section class="content-block">
-          <h2>Booking estimate</h2>
-          <p>Estimated total: <strong>$1,450</strong></p>
-          <p>Once you submit, your booking will be confirmed and added to your history.</p>
-        </section>
-      </article>
-
-      <aside class="sidebar">
-        <div class="info-card">
-          <h4>Booking tips</h4>
-          <ul>
-            <li>Choose travel dates with good weather</li>
-            <li>Book early for better prices</li>
-            <li>Compare destinations from favorites</li>
-          </ul>
-        </div>
-      </aside>
-    </section>
-
-    <footer class="site-footer">
-      <p>VacAsia | Discover vacation inspiration across Asia.</p>
-    </footer>
-  </main>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="app"><div class="initial-loading">VacAsia <span>Finding your next somewhere…</span></div></div>
+  <div id="modal-root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <noscript>This website needs JavaScript to search destinations and manage your trips.</noscript>
 </body>
 </html>

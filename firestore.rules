@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function destinationIds() {
+      return ['kyoto', 'tokyo', 'bali', 'ha-long-bay', 'hoi-an', 'bangkok', 'phuket', 'seoul', 'singapore', 'siem-reap', 'kathmandu', 'taipei'];
+    }
+    // Match server/data.js. All values are illustrative demo prices in USD cents.
+    // Update these trusted values whenever the catalog prices change.
+    function adultCents(id) {
+      return {'kyoto': 3200, 'tokyo': 3800, 'bali': 2800, 'ha-long-bay': 4500,
+              'hoi-an': 1800, 'bangkok': 2500, 'phuket': 3500, 'seoul': 3000,
+              'singapore': 4000, 'siem-reap': 3700, 'kathmandu': 2200, 'taipei': 2500}[id];
+    }
+    function validName(name) {
+      return name is string && name.size() >= 2 && name.size() <= 60
+        && !name.matches('.*[\\x00-\\x1f\\x7f].*');
+    }
+    function validPreferences(p) {
+      return p == null || (p is map
+        && p.keys().hasAll(['budget', 'days', 'group', 'month', 'interests'])
+        && p.keys().hasOnly(['budget', 'days', 'group', 'month', 'interests'])
+        && p.budget is number && p.budget >= 20 && p.budget <= 1000
+        && p.days is int && p.days >= 1 && p.days <= 30
+        && p.group in ['solo', 'couple', 'family', 'friends']
+        && p.month is int && p.month >= 1 && p.month <= 12
+        && p.interests is list && p.interests.size() <= 8
+        && p.interests.toSet().size() == p.interests.size()
+        && p.interests.hasOnly(['culture', 'beach', 'city', 'nature', 'adventure', 'food', 'family', 'wellness']));
+    }
+    function validProfile(p) {
+      return p.keys().hasAll(['name', 'email', 'favorites', 'preferences', 'createdAt', 'updatedAt'])
+        && p.keys().hasOnly(['name', 'email', 'favorites', 'preferences', 'createdAt', 'updatedAt'])
+        && validName(p.name) && p.email is string && p.email == request.auth.token.email
+        && p.favorites is list && p.favorites.size() <= 12
+        && p.favorites.toSet().size() == p.favorites.size()
+        && p.favorites.hasOnly(destinationIds()) && validPreferences(p.preferences)
+        && p.createdAt is timestamp && p.updatedAt == request.time;
+    }
+    function twoDigits(value) { return value < 10 ? '0' + string(value) : string(value); }
+    function bangkokToday() { return (request.time + duration.value(7, 'h')).date(); }
+    function lastVisitDate() {
+      let today = bangkokToday();
+      // JS setUTCFullYear advances Feb 29 to March 1 when the target year is not leap.
+      return today.month() == 2 && today.day() == 29
+        ? timestamp.date(today.year() + 2, 3, 1)
+        : timestamp.date(today.year() + 2, today.month(), today.day());
+    }
+    function validVisit(d) {
+      return d.date is string && d.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && d.visitAt is timestamp && d.visitAt == d.visitAt.date()
+        && d.date == string(d.visitAt.year()) + '-' + twoDigits(d.visitAt.month()) + '-' + twoDigits(d.visitAt.day())
+        && d.visitAt >= bangkokToday() && d.visitAt <= lastVisitDate();
+    }
+    function validBooking(d, id) {
+      return id.matches('VA-[A-F0-9]{12}')
+        && d.keys().hasAll(['destinationId', 'date', 'visitAt', 'adults', 'children', 'totalCents', 'status', 'createdAt', 'notes'])
+        && d.keys().hasOnly(['destinationId', 'date', 'visitAt', 'adults', 'children', 'totalCents', 'status', 'createdAt', 'notes'])
+        && d.destinationId in destinationIds() && validVisit(d)
+        && d.adults is int && d.adults >= 1 && d.adults <= 12
+        && d.children is int && d.children >= 0 && d.children <= 12
+        && d.adults + d.children <= 20
+        && d.totalCents is int
+        && d.totalCents == adultCents(d.destinationId) * d.adults + math.round(adultCents(d.destinationId) * 0.6) * d.children
+        && d.status == 'demo-confirmed' && d.createdAt == request.time
+        && d.notes is string && d.notes.size() <= 500;
+    }
+    // A separate namespace leaves the original website's /users data untouched.
+    match /vacasiaProfiles/{uid} {
+      allow get, list: if owner(uid);
+      allow create: if owner(uid) && validProfile(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && validProfile(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.email == resource.data.email;
+      allow delete: if false;
+      match /bookings/{id} {
+        allow get, list: if owner(uid);
+        allow create: if owner(uid) && validBooking(request.resource.data, id);
+        allow update: if owner(uid)
+          && resource.data.status == 'demo-confirmed'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        allow delete: if false;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
