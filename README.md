@@ -1,71 +1,132 @@
 # VacAsia
 
-VacAsia is a redesigned Asia travel website with English as its default language and an **EN / VI** switch that translates the interface and destination content into Vietnamese. It runs with Node.js 20 or newer and has no npm package dependencies.
+VacAsia is a bilingual Asia travel website. English is the default language;
+the **EN / VI** switch translates the interface and destination content into
+Vietnamese. The delivered website explicitly uses **Firebase Authentication
+and Cloud Firestore** for accounts and saved travel data.
 
-## Run locally
+See [FIREBASE_STATUS.md](FIREBASE_STATUS.md) for the current cloud setup and
+deployment status, and [HOSTING.md](HOSTING.md) for publishing instructions.
+The Firebase project used by the website is defined in `server/siteConfig.js`.
 
-To update an existing hosted website, see **HOSTING.md**. The `server/` folder contains the site files, including physical copies of the original page URLs and an optional adapter for the Firebase project configured in the original upload. The local Node service below is included for running and testing the features without cloud setup.
+## Account improvements
 
-Open a terminal in this folder and run:
+- Sign up and sign in with email/password, or choose **Continue with Google**.
+- Save destinations, travel preferences and demo reservations to your own
+  Firestore profile, and retain them when signing in again.
+- Recover a missing Firestore profile when an existing Firebase account signs in.
+- Keep a successful sign-in when Firestore is unavailable. The site displays a
+  specific cloud-sync warning and a **Retry sync** button instead of reporting
+  that account creation failed.
+- Show separate messages for a disabled sign-in provider, unauthorized domain,
+  cancelled Google popup, connection failure and Firestore access failure.
 
-```sh
-npm start
-```
+Enabling a sign-in provider and publishing database rules require configuration
+in the active Firebase project. Source-code changes alone do not enable those
+remote services. The latest verified state is recorded in
+[FIREBASE_STATUS.md](FIREBASE_STATUS.md).
 
-Or run `node server.mjs` directly. Open **http://127.0.0.1:4173** in a browser. Keep the terminal running while using the site. Opening the HTML file directly does not start the account or booking service.
+## Run a local preview
 
-If `npm` is unavailable but Node.js is installed, `node server.mjs` works without installing anything. To verify the API, run `npm test` or `node --test` from this folder.
+Install Node.js 20 or newer, open a terminal in this project folder, and run:
 
-On Windows PowerShell, you can use a different port:
-
-```powershell
-$env:PORT = '4174'
+```shell
 node server.mjs
 ```
 
-`HOST` defaults to `127.0.0.1`. `VACASIA_DATA_FILE` can set an alternate absolute storage file path, useful for an isolated demo or test. Storage must stay outside the public `server/` folder.
+Open **http://127.0.0.1:4173** and keep the terminal running. `npm start` runs
+the same command. The preview requires no npm package installation and permits
+the Firebase browser SDK in its Content Security Policy. It uses the Firebase
+project in `server/siteConfig.js`, including during local preview. Internet
+access and any required localhost authorization are necessary for cloud sign-in.
 
-## Features
+The contents of `server/` can also be uploaded to a static host. Opening HTML
+directly with a `file://` URL is not a supported account preview.
 
-- Discover Asian destinations with search, country and category filters, sorting, and budget preferences.
-- Enter travel needs: daily budget, trip length, travel group, month, and interests. View destination recommendations that explain their match.
-- Read destination details, highlights, seasonal advice, local food, estimated daily costs, and ticket information.
-- Create an account, sign in, update your name, and save favorite destinations.
-- Compare destinations and keep a personal list of places to visit.
-- Reserve **demo tickets** with a visit date, adult and child quantities, a server-calculated total, and optional notes. View ticket history, download a demo confirmation, and cancel a reservation.
-- Switch between English and Vietnamese. Your language choice is remembered in your browser.
-- Responsive layouts, a persistent light/dark mode switch, keyboard navigation, accessible forms, empty states, and localized validation feedback.
+For an isolated local demonstration, explicitly change
+`server/siteConfig.js` to `backend: 'node'` before starting the server. That
+optional mode uses its own private JSON storage and email/password accounts;
+Google sign-in belongs to Firebase mode. Local accounts are separate from
+Firebase accounts. Restore `backend: 'firebase'` before publishing the cloud site.
 
-## Accounts and storage
+## Travel features
 
-Create a new account from the sign-in button; no starter password or shared demo account is supplied. Passwords must contain 8–128 characters. Passwords are salted and hashed with Node's scrypt; plaintext passwords are never saved. Browser sessions use opaque HttpOnly, SameSite cookies and expire after seven days. Mutation requests reject cross-site origins. API input and ticket prices are validated on the server.
+- Destination search, country/category filters, sorting, budget preferences and
+  destination comparisons.
+- Travel planning by budget, trip length, group, month and interests, with
+  explained destination recommendations.
+- Bilingual destination details, highlights, seasonal advice, local food,
+  estimated daily costs, tourism links and map links.
+- Saved places, profile-name updates and personal reservation history.
+- Demo ticket reservations with visit dates, adult/child quantities, notes,
+  calculated totals, downloadable confirmations and cancellation.
+- Remembered language and light/dark preferences, responsive layouts,
+  accessible forms, keyboard navigation and localized feedback.
 
-Accounts, favorite places, preferences, bookings and hashed session tokens are stored in `storage/vacasia.json`. The server creates this file on the first account change. Writes are serialized and saved through an atomic file replacement. This folder is not served to browsers. Data survives server restarts; back up the storage file if you want to preserve it. The provided automated tests use a separate temporary storage file and do not modify your accounts.
+## Accounts and saved data
 
-Travel dates use **Asia/Bangkok** time. Bookings accept today through the next two years, 1–12 adults and 0–12 children, up to 20 travelers. Child tickets cost 60% of the adult demo price, rounded to cents. Daily budget is in USD per person; travel estimates and demo ticket prices are illustrative.
+Firebase Authentication manages passwords and persisted sign-in state. Passwords
+are never written to Firestore. Account profiles live at
+`vacasiaProfiles/{FirebaseAuthUid}`; reservations are in that profile's
+`bookings` subcollection. The rules restrict data to its signed-in owner and
+validate profile fields, favorites, preferences and reservation details.
 
-## Demo tickets and deployment
+The feature namespace does not import data from a former `/users` schema.
+Existing Auth accounts receive a feature profile on sign-in if one is missing.
+After an Auth-only signup, sign in or retry sync once Firestore is ready;
+do not attempt to register the same email again.
 
-This project demonstrates a ticket purchase flow. **It does not sell valid tickets, process payments, collect card information, or connect to live operator inventory.** Confirmations are labeled as demo reservations. Use the linked official destination websites for real availability, entry conditions, and tickets.
+Travel dates use **Asia/Bangkok** time. Demo reservations accept today through
+the next two calendar years, 1–12 adults and 0–12 children, with at most
+20 travelers. Child demo prices are 60% of the adult price, rounded to cents.
+Firestore rules independently verify quantities, dates and integer-cent totals.
+Travel estimates and prices are illustrative.
 
-The included JSON storage is intended for a local project or single-process demonstration. Before a public production launch, use HTTPS and Secure session cookies, a production database, backups, verified email and password recovery, operational monitoring, deployment-specific request limits, current travel and pricing data, and a real ticket operator/payment integration. The bundled server binds to localhost by default. All destination photos and fonts are bundled locally. Map and official tourism links open external websites.
+**Reservations are demos.** The site does not process payments, issue valid
+admission tickets or use live operator inventory. Official destination links
+lead to real ticket and availability information.
+
+## Verification
+
+Run the ordinary automated tests from this folder:
+
+```shell
+node --test
+```
+
+These cover the optional Node API, adapter input checks, account recovery,
+specific Firebase error handling and Google popup/redirect behavior. They do
+not create live Firebase accounts. Emulator suites skip during this command.
+
+The real local Authentication and Firestore emulators passed **20 tests**:
+17 security-rule tests and 3 adapter integration tests. They verify email
+registration/login, Google-provider profiles, saved data, profile recovery,
+reservations, cancellation and account isolation. See
+[tests/emulator/README.md](tests/emulator/README.md) for the separate installation
+and run command, and [the captured run](tests/emulator/validation.log).
+
+The website retains **Firebase JS 9.22.0** CDN imports. Emulator tests use
+**Firebase JS 13.0.0** with Firebase CLI 15.33.0. The browser preview loaded the
+website's pinned SDK successfully without script or CSP errors. Emulator Google
+sign-in uses an emulator-only credential in place of popup UI; a successful
+live Google OAuth flow and deployed Firestore access are separate checks,
+recorded in [FIREBASE_STATUS.md](FIREBASE_STATUS.md).
 
 ## Project layout
 
 ```text
-server.mjs          Local HTTP server, accounts and booking API
-server/index.html   Application shell
-server/app.js       Search, recommendations, details and account UI
-server/style.css    Responsive design
-server/i18n.js      English and Vietnamese interface translations
-server/data.js      Bilingual destination catalog
-server/siteConfig.js Backend mode and original Firebase project configuration
-server/firebaseAdapter.js Optional Firebase account and booking integration
-server/assets/      Local imagery
-tests/api.test.mjs  Real HTTP API and persistence tests
-firestore.rules     Account isolation and demo booking validation for Firebase
-HOSTING.md          Updating an existing hosted website
-storage/            Private runtime data (created automatically)
+server/                     Static website, original page URLs and bundled assets
+server/siteConfig.js        Explicit backend mode and active public Firebase config
+server/firebaseAdapter.js   Firebase Auth and Firestore integration
+server.mjs                  Local preview and optional isolated Node API
+firestore.rules             Profile isolation and demo reservation validation
+firebase.json               Firestore rules and Firebase Hosting configuration
+firebase.emulator.json      Loopback-only Auth/Firestore emulator configuration
+tests/                      API, adapter and emulator tests
+HOSTING.md                  Setup and publishing instructions
+FIREBASE_STATUS.md          Verified cloud setup and deployment status
 ```
 
-The original page URLs (including `VAmain.html`, `search.html`, `favorites.html`, `destination.html`, `booking.html`, `history.html`, `transaction.html`, `profile.html`, `login.html`, and `register.html`) remain available through the application shell.
+The original page URLs, including `VAmain.html`, `search.html`, `favorites.html`,
+`destination.html`, `booking.html`, `history.html`, `transaction.html`,
+`profile.html`, `login.html` and `register.html`, remain available.

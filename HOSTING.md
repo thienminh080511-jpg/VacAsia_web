@@ -1,29 +1,85 @@
-# Add the features to your existing website
+# Publish VacAsia with Firebase accounts and Firestore
 
-The refreshed website can use the original Firebase project on your existing static host. The optional Node server remains useful for local development and runs without npm dependencies. No Firebase settings, remote data, hosting deployment, or existing live files were changed while preparing this project.
+The website uses `backend: 'firebase'` in `server/siteConfig.js`. Both static
+hosting and the included Node preview use the Firebase account service in that
+mode. [FIREBASE_STATUS.md](FIREBASE_STATUS.md) records what has actually been
+configured and deployed; these instructions also cover steps that may remain.
 
-## Existing static hosting
+## Confirm the active project
 
-1. Back up your currently hosted website and your current Firestore rules.
-2. Upload **the contents of `server/`** into the directory where you currently host VacAsia. This works at your domain root or in a subfolder such as `/vacasia/` or `/server/`.
-3. Keep `app.js`, `style.css`, `data.js`, `i18n.js`, `siteConfig.js`, `firebaseAdapter.js`, `assets/`, and all supplied HTML pages together. Assets and navigation use relative paths. Physical HTML files preserve the original page URLs, so a static host does not need SPA rewrites.
-4. Serve JavaScript files with a JavaScript MIME type and use HTTPS. Do not open the HTML directly with a `file://` URL.
+Read the public web-app configuration in `server/siteConfig.js` and confirm
+that every Firebase field belongs to the intended project. Obtain that config
+from **Firebase Console → Project settings → Your apps → Web app**. Keep
+`backend: 'firebase'`. Do not add the old `firebaseConfig.js` script to the
+updated HTML; the adapter initializes the SDK itself.
 
-`server/siteConfig.js` preserves the public Firebase web configuration from your original `firebaseConfig.js`, including project **vacasia-27c13**. The default `backend: 'auto'` uses the Node API when it is available and falls back to Firebase when a static host returns HTML or a missing response for `/api/session`. Set `backend: 'firebase'` to explicitly use Firebase on your existing host, or `backend: 'node'` to require the Node API. Do not add the old `firebaseConfig.js` script to these updated HTML pages; the adapter loads the required modules itself.
+The public web config identifies the app. Authentication and deployed rules
+control access to data. It is not a service-account credential; do not place
+service-account keys, access tokens or account passwords in website files.
+See [Firebase web configuration](https://firebase.google.com/docs/projects/learn-more#config-files-objects).
 
-The adapter uses the same pinned **Firebase 9.22.0** browser SDK version as the original website, with Auth and Firestore only. The public Firebase web configuration is intended for client initialization; access to data depends on Authentication and deployed Firestore rules. See [Firebase web configuration](https://firebase.google.com/docs/projects/learn-more#config-files-objects).
+## Enable Authentication and Firestore
 
-## Enable the existing Firebase project
+In the active Firebase project:
 
-In the Firebase console for **vacasia-27c13**:
+1. Open **Authentication → Sign-in method** and enable **Email/Password**.
+2. Enable **Google** and select the project's support email when requested.
+3. In **Authentication → Settings → Authorized domains**, add the actual
+   website hostname. Add `localhost` separately for local Firebase preview.
+   Hostnames do not include a protocol, path or port.
+4. Confirm the default Cloud Firestore database exists and record its edition
+   and region in `FIREBASE_STATUS.md`. This app uses Firebase document operations
+   and Security Rules, not Firestore's MongoDB-compatible interface.
+5. Publish the reviewed `firestore.rules` to that same project.
 
-1. Open **Authentication → Sign-in method** and enable **Email/Password** if it is not already enabled.
-2. Open **Authentication → Settings → Authorized domains** and add your actual hosting domain if needed. Review localhost authorization separately if you explicitly choose Firebase during local testing.
-3. Ensure a Cloud Firestore database exists in the project.
-4. Review and publish the supplied `firestore.rules` as described below before using favorites, travel preferences, or demo reservations.
-5. Upload the website files through your current hosting workflow. Use your existing Firebase Hosting project if that is where your website lives; no hosting-provider change is required.
+The Google account used to administer Firebase is separate from visitors'
+Google sign-in. A Google admin login does not automatically enable password
+sign-in or create the Firestore database. See
+[Firebase Google authentication](https://firebase.google.com/docs/auth/web/google-signin).
 
-Firebase handles account passwords and persisted sign-in state. The site does not save passwords in Firestore. Existing Email/Password Firebase Auth accounts can sign in. New feature data is stored at:
+The app prefers Google popup sign-in. A blocked popup falls back to redirect
+only when the site's origin matches the configured `authDomain`; on other
+hosts, the app asks the visitor to allow popups and retry. A cancelled popup
+does not trigger a redirect. If setting up same-origin redirect on a custom
+host, follow [Firebase's redirect guidance](https://firebase.google.com/docs/auth/web/redirect-best-practices),
+including the auth helper/proxy and authorized OAuth redirect URI requirements.
+
+## Upload to an existing static host
+
+1. Back up the current website and any existing Firestore rules.
+2. Upload **the contents of `server/`** to the directory hosting VacAsia.
+   It works at a domain root or in a subfolder such as `/vacasia/`.
+3. Keep all supplied HTML pages, `app.js`, `style.css`, `fonts.css`, `data.js`,
+   `i18n.js`, `siteConfig.js`, `firebaseAdapter.js` and `assets/` together.
+   Physical HTML files preserve the original URLs, so no SPA rewrite is needed.
+4. Serve JavaScript with a JavaScript MIME type and use HTTPS. Authorize this
+   host for Firebase Google sign-in as described above.
+
+Uploading to an existing host changes the site's files; it does not publish
+Firestore rules or enable Authentication providers. Complete both parts.
+
+## Deploy with Firebase Hosting
+
+`firebase.json` already serves `server/` and points to `firestore.rules`.
+From the project folder, authenticate the Firebase CLI with the Google account
+that administers the chosen project. Then explicitly use the project ID in the
+current site configuration; do not rely on a previous CLI default project.
+
+For PowerShell:
+
+```powershell
+npx firebase-tools@15.33.0 login
+$vacasiaProject = node --input-type=module -e "import { siteConfig } from './server/siteConfig.js'; process.stdout.write(siteConfig.firebase.projectId)"
+npx firebase-tools@15.33.0 projects:list
+npx firebase-tools@15.33.0 deploy --only firestore:rules,hosting --project "$vacasiaProject"
+```
+
+Check that `projects:list` includes the selected ID before deploying. The deploy
+command publishes both rules and website files to that project. It does not
+enable providers or create the database. See
+[Firebase Hosting deployment](https://firebase.google.com/docs/hosting/quickstart).
+
+## Saved-data model and rules
 
 ```text
 vacasiaProfiles/{FirebaseAuthUid}
@@ -34,38 +90,64 @@ vacasiaProfiles/{FirebaseAuthUid}/bookings/{bookingId}
   status, createdAt, notes
 ```
 
-This namespace leaves the original `/users` data intact. Existing favorites/bookings in a different schema are not automatically imported. A returning account receives an empty feature profile until it saves or changes data. Registration creates the Firebase Auth account before writing its feature profile; if project setup blocks the profile write, finish the setup and sign in with that account instead of registering it again. See [Firebase Email/Password authentication](https://firebase.google.com/docs/auth/web/start).
+The rules permit each signed-in account to access only its own feature data.
+They validate allowed fields, name limits, destination IDs, preferences,
+quantities, notes and timestamps. Demo booking totals are checked against a
+trusted price table; cancellation can change only the status.
 
-## Publish restrictive rules carefully
+For a new project containing only this app, the complete rules file denies
+all other collections. In a shared existing project, replacing the complete
+rules also denies legacy clients access to `/users` and other collections.
+Preserve necessary reviewed legacy collection rules when integrating this file.
+The feature code does not automatically migrate old profiles or bookings.
 
-`firestore.rules` allows a signed-in account to read and modify only its own feature profile and demo bookings. It validates allowed fields, names, favorites, preferences, quantities, notes, server creation timestamps, and Bangkok visit dates. Bookings store integer cents; rules independently verify totals against a fixed destination price table. Cancellation may change only the booking status. Browser-calculated totals are not the security boundary.
+Review overlapping permissions: Firestore combines matching `allow` conditions
+with OR. A broad legacy wildcard grant can bypass the feature's owner checks;
+a matching deny cannot override it. See
+[Firestore rule conditions](https://firebase.google.com/docs/firestore/security/rules-conditions).
 
-For a new project containing only this app, the supplied complete rules file denies all other collections by default. **Replacing your existing rules with the complete file will also deny legacy clients access to the original `/users` and other collections.** For an existing project, preserve necessary reviewed legacy rules and add the supplied helper functions and `/vacasiaProfiles/{uid}` match block into the current `match /databases/{database}/documents` block.
+When changing destination IDs or `ticketPrice` in `server/data.js`, update
+`destinationIds` and `adultCents` in `firestore.rules` and publish both together.
+Rules independently tie the displayed visit date to its timestamp, enforce
+Bangkok's day boundary and cap visits at two calendar years ahead.
 
-**Review overlapping rules before publishing. Firestore combines matching `allow` conditions with OR.** A legacy permissive wildcard such as `match /{document=**} { allow read, write: if true; }` still grants access to `vacasiaProfiles`, even alongside this file's restrictive match or catch-all denial. Remove broad test grants or replace them with explicit legacy collection matches that do not cover `vacasiaProfiles`. A separate deny rule cannot override a matching allow. See [Firestore rule conditions and overlapping matches](https://firebase.google.com/docs/firestore/security/rules-conditions).
+## Content Security Policy
 
-If you change `ticketPrice` or destination IDs in `server/data.js`, update the trusted `adultCents` table and `destinationIds` list in `firestore.rules` at the same time and publish the reviewed rules. Child tickets are 60% of the adult demo price, rounded to cents. The adapter's internal `visitAt` timestamp is tied to the displayed date by the rules, using Bangkok's UTC+7 day boundary and the same two-calendar-year limit as the local server.
+The included Node preview permits Firebase's SDK and endpoints automatically
+when Firebase mode is selected. If your static host supplies its own CSP,
+keep `'self'` and allow these origins in the relevant directives:
 
-## Hosts with a Content Security Policy
+| Directive | Additional origins |
+| --- | --- |
+| `script-src` | `https://www.gstatic.com`, `https://apis.google.com` |
+| `connect-src` | `https://identitytoolkit.googleapis.com`, `https://securetoken.googleapis.com`, `https://firestore.googleapis.com`, `https://www.gstatic.com`, the HTTPS origin of `siteConfig.firebase.authDomain` |
+| `frame-src` | The HTTPS origin of `siteConfig.firebase.authDomain` |
 
-The local Node server keeps its existing policy. A static host with its own strict CSP must permit Firebase's modules and network endpoints. For this project's Email/Password flow, add these origins to your existing directives as needed:
+Use the actual configured auth domain, rather than a blanket wildcard. The
+destination images and delivered fonts are bundled local assets.
 
-```text
-script-src:  https://www.gstatic.com
-connect-src: https://identitytoolkit.googleapis.com
-             https://securetoken.googleapis.com
-             https://firestore.googleapis.com
-frame-src:   https://vacasia-27c13.firebaseapp.com
-```
+## Verify after publishing
 
-Keep `'self'` in those directives for the site's own files. The delivered fonts and destination images are local assets. Add a different authentication domain to `frame-src` if you change `authDomain`; do not use a blanket wildcard to bypass a CSP failure. Firebase Auth may use its authentication iframe for browser storage and account state.
+1. Create a test email/password account and confirm a Firestore profile appears.
+2. Sign out, sign in with **Continue with Google**, and confirm the profile uses
+   the signed-in account's UID.
+3. Save a destination and travel preferences; reload and sign in again to
+   confirm persistence.
+4. Make and cancel a demo reservation; confirm history and totals.
+5. Confirm a different account cannot read or modify the first account's data.
+6. Switch between English and Vietnamese and check account/error feedback.
 
-## Local development and verification
+The real local emulator suite already passed 20 tests; setup and captured output
+are in [tests/emulator/README.md](tests/emulator/README.md). The emulator tests
+use Firebase JS 13.0.0 while the website retains pinned 9.22.0 imports. The
+browser preview loaded the pinned SDK without script/CSP errors. The latest
+live-project verification is separately recorded in
+[FIREBASE_STATUS.md](FIREBASE_STATUS.md).
 
-From the project folder, run `node server.mjs`, then open **http://127.0.0.1:4173**. `backend: 'auto'` selects the local service, whose private JSON store is independent of your Firebase data. Run `node --test` for the local API suite and adapter input checks. Tests reject malformed Firebase requests before SDK loading, so they do not authenticate or write to the live Firebase project.
+If Auth succeeds but Firestore fails, the site keeps the account signed in,
+shows the specific cloud warning and offers **Retry sync**. Finish database/rule
+configuration and retry; re-registering the email is unnecessary. Cloud actions
+remain pending until data access succeeds.
 
-The Node HTTP API was tested with real local requests, account isolation, persistence, Unicode, input validation, and server-calculated prices. **The Firebase adapter and rules were reviewed against official APIs, but live Firebase authentication, deployed Firestore rules, and the hosted integration have not been tested or deployed.** Validate rules and account isolation with the [Firebase Local Emulator Suite](https://firebase.google.com/docs/emulator-suite) or a dedicated test project before publishing them to your live project.
-
-For browser testing of Firebase mode locally, serve `server/` through a static development server or the Firebase Hosting Emulator with the Firebase CSP origins listed above. The bundled Node server is intended for its own local API mode; its restrictive script policy does not load the external Firebase SDK.
-
-Ticket confirmations remain **demo reservations**, with no payment, valid admission ticket, or live operator inventory. A real purchase flow requires a trusted operator/payment integration. Use the destination's official link for actual tickets and availability.
+Ticket confirmations remain demo reservations. Real purchases require a ticket
+operator and payment integration.

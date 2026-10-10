@@ -1,9 +1,9 @@
 {
   "name": "vacasia",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "Bilingual Asia travel discovery with local accounts and demo ticket booking.",
+  "description": "Bilingual Asia travel discovery with Firebase accounts, Google sign-in, Firestore saved trips and demo reservations.",
   "engines": { "node": ">=20" },
   "scripts": { "start": "node server.mjs", "test": "node --test" }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "vacasia-emulator-tests",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "firebase emulators:exec --only auth,firestore --project demo-vacasia-rules --config ../../firebase.emulator.json \"node --test run-tests.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.0.0",
+    "firebase-tools": "15.33.0"
+  }
+}

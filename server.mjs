@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { destinations } from './server/data.js';
+import { siteConfig } from './server/siteConfig.js';
 
 const scrypt = promisify(scryptCallback);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -94,6 +95,11 @@ async function body(req) {
 
 /** Create a server with an isolated storage file; useful for tests and local demos. */
 export async function createApp(options = {}) {
+  const cloudAccounts = (options.backend ?? siteConfig.backend) !== 'node';
+  const authDomain = /^[a-z0-9.-]+$/i.test(siteConfig.firebase?.authDomain ?? '') ? `https://${siteConfig.firebase.authDomain}` : '';
+  const firebaseScripts = cloudAccounts ? ' https://www.gstatic.com https://apis.google.com' : '';
+  const firebaseConnections = cloudAccounts ? ` https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.gstatic.com ${authDomain}` : '';
+  const securityPolicy = `default-src 'self'; script-src 'self'${firebaseScripts}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self'${firebaseConnections}; frame-src ${cloudAccounts && authDomain ? authDomain : "'none'"}; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`;
   const dataFile = resolve(options.dataFile ?? process.env.VACASIA_DATA_FILE ?? resolve(root, 'storage', 'vacasia.json'));
   const normalizePath = path => process.platform === 'win32' ? path.toLowerCase() : path;
   if (normalizePath(dataFile) === normalizePath(publicRoot) || normalizePath(dataFile).startsWith(normalizePath(publicRoot + sep))) throw new Error('VACASIA_DATA_FILE must be outside the public server directory.');
@@ -155,7 +161,7 @@ export async function createApp(options = {}) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', securityPolicy);
     try {
       const requestUrl = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
       const path = requestUrl.pathname;

@@ -1,8 +1,8 @@
 // Public Firebase web configuration preserved from the original website.
-// backend: 'auto' selects the local API when available, otherwise Firebase.
-// Use 'node' to require the local API, or 'firebase' for an existing static host.
+// Firebase is the account and saved-data service for the delivered website.
+// Use 'node' for an isolated local demo, or 'auto' to prefer the local API.
 export const siteConfig = {
-  backend: 'auto',
+  backend: 'firebase',
   firebase: {
     apiKey: 'AIzaSyCH0YzjTb5GE7mSsXwApl2xX2AdRI78bZk',
     authDomain: 'vacasia-27c13.firebaseapp.com',

@@ -45,8 +45,10 @@ test('Firebase adapter rejects malformed requests before any SDK or network acce
 });
 
 test('public Firebase configuration and trusted rule prices match the delivered catalog', async () => {
-  assert.equal(siteConfig.backend, 'auto');
-  assert.equal(siteConfig.firebase.projectId, 'vacasia-27c13');
+  assert.equal(siteConfig.backend, 'firebase');
+  const project = JSON.parse(await readFile(new URL('../.firebaserc', import.meta.url), 'utf8'));
+  assert.equal(siteConfig.firebase.projectId, project.projects.default);
+  assert.ok(siteConfig.firebase.authDomain.startsWith(siteConfig.firebase.projectId + '.'));
   const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
   for (const destination of destinations) {
     const escapedId = destination.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

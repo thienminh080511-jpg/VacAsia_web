@@ -9,7 +9,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&
 const readLocal = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
 const nowMonth = Number(new Intl.DateTimeFormat('en', {timeZone:'Asia/Bangkok',month:'numeric'}).format(new Date()));
-const state = { lang:readLocal('vacasia-language','en') === 'vi' ? 'vi' : 'en', theme:readLocal('vacasia-theme-v2','light')==='dark'?'dark':'light', user:null, favorites:[], bookings:[], preferences:readLocal('vacasia-preferences',null), online:true, category:'all', compare:[], menu:false };
+const state = { lang:readLocal('vacasia-language','en') === 'vi' ? 'vi' : 'en', theme:readLocal('vacasia-theme-v2','light')==='dark'?'dark':'light', user:null, favorites:[], bookings:[], preferences:readLocal('vacasia-preferences',null), online:true, cloudReady:true, syncWarning:null, connectionError:null, authBusy:false, syncBusy:false, category:'all', compare:[], menu:false };
 const defaults = {budget:100,days:5,group:'couple',month:nowMonth,interests:['culture','food']};
 let modalState = null;
 let focusBeforeModal = null;
@@ -17,8 +17,17 @@ let pendingAction = null;
 let bookingDraft = null;
 let bookingStep = 1;
 let confirmedBooking = null;
+let confirmedBookingOwner = null;
 let toastTimer;
 let cloudApi = null;
+let firebaseConfigured = false;
+let accountEpoch = 0;
+let authIntent = 0;
+let authAttemptUserId;
+let authAttemptBaselineId = null;
+let logoutBusy = false;
+let syncRequest = 0;
+let authObserver = null;
 const t = (key, args) => translate(key, state.lang, args);
 const localized = value => typeof value === 'object' ? value[state.lang] ?? value.en : value;
 const money = amount => new Intl.NumberFormat(state.lang === 'vi' ? 'vi-VN' : 'en-US',{style:'currency',currency:'USD',maximumFractionDigits:Number.isInteger(amount) ? 0 : 2}).format(amount);
@@ -67,8 +76,16 @@ const route = () => {
 };
 function header() {
   const current = route();
-  return `${!state.online?`<div class="offline-banner">${t('offline')}</div>`:''}<header class="topbar"><div class="container topbar-inner">${brand()}<nav class="navigation ${state.menu?'open':''}" id="navigation" aria-label="${t('menu')}">${navLink('search.html',t('discover'),['home','search','destination'].includes(current))}${navLink('plan.html',t('plan'),current==='plan')}${navLink('favorites.html',`${t('saved')}${state.favorites.length?`<span class="nav-count">${state.favorites.length}</span>`:''}`,current==='favorites')}${navLink('history.html',t('tickets'),current==='tickets')}</nav><div class="header-actions"><button class="language-button" data-action="language" aria-label="${t('switchLanguage')}" title="${t('switchLanguage')}">${icon('globe')}<span class="${state.lang==='en'?'':'alternate'}">EN</span><span class="alternate">/</span><span class="${state.lang==='vi'?'':'alternate'}">VI</span></button>${state.user?`<button class="avatar" data-action="account" aria-label="${t('account')}" title="${escape(state.user.name)}">${escape(state.user.name.split(/\s+/).map(word=>word[0]).slice(0,2).join('').toUpperCase())}</button>`:`<button class="btn outline" data-action="auth">${t('signIn')}</button>`}<button class="icon-button menu-toggle" data-action="menu" aria-label="${t('menu')}" aria-expanded="${state.menu}" aria-controls="navigation">${icon('menu')}</button></div></div></header>`;
+  return `<div id="account-status">${accountStatus()}</div><header class="topbar"><div class="container topbar-inner">${brand()}<nav class="navigation ${state.menu?'open':''}" id="navigation" aria-label="${t('menu')}">${navLink('search.html',t('discover'),['home','search','destination'].includes(current))}${navLink('plan.html',t('plan'),current==='plan')}${navLink('favorites.html',`${t('saved')}${state.favorites.length?`<span class="nav-count">${state.favorites.length}</span>`:''}`,current==='favorites')}${navLink('history.html',t('tickets'),current==='tickets')}</nav><div class="header-actions"><button class="language-button" data-action="language" aria-label="${t('switchLanguage')}" title="${t('switchLanguage')}">${icon('globe')}<span class="${state.lang==='en'?'':'alternate'}">EN</span><span class="alternate">/</span><span class="${state.lang==='vi'?'':'alternate'}">VI</span></button>${state.user?`<button class="avatar" data-action="account" aria-label="${t('account')}" title="${escape(state.user.name)}">${escape(state.user.name.split(/\s+/).map(word=>word[0]).slice(0,2).join('').toUpperCase())}</button>`:`<button class="btn outline" data-action="auth">${t('signIn')}</button>`}<button class="icon-button menu-toggle" data-action="menu" aria-label="${t('menu')}" aria-expanded="${state.menu}" aria-controls="navigation">${icon('menu')}</button></div></div></header>`;
 }
+function syncRetryButton() { return `<button class="btn outline small" data-action="retry-sync" ${state.syncBusy?'disabled':''}>${t(state.syncBusy?'loading':'retrySync')}</button>`; }
+function accountStatus() {
+  if(state.user&&!state.cloudReady)return `<div class="sync-banner" role="status"><div><strong>${t('cloudSyncPendingTitle')}</strong><p>${errorMessage(state.syncWarning)} ${t('cloudSyncPendingBody')}</p></div>${syncRetryButton()}</div>`;
+  if(!state.online)return `<div class="offline-banner" role="status">${errorMessage(state.connectionError??{code:'offline'})} <button class="text-link" data-action="retry-sync" ${state.syncBusy?'disabled':''}>${t(state.syncBusy?'loading':'retryConnection')}</button></div>`;
+  if(state.user&&state.syncWarning?.stage==='auth_profile')return `<div class="sync-banner profile-sync-note" role="status"><p>${t('profileSyncPending')}</p></div>`;
+  return '';
+}
+function refreshAccountStatus() { if($('#account-status'))$('#account-status').innerHTML=accountStatus(); }
 function footer() {
   return `<footer class="footer"><div class="container"><div class="footer-top"><div>${brand()}<p>${t('footerBody')}</p></div><div class="footer-links">${navLink('about.html',t('about'))}${navLink('about.html#faq',t('faq'))}${navLink('plan.html',t('preferences'))}${navLink('history.html',t('tickets'))}</div></div><div class="footer-bottom"><span>${t('copyright',{year:2026})}</span><span>${t('footerNote')}</span></div></div></footer>`;
 }
@@ -132,11 +149,11 @@ function searchPage() {
 function emptyState(symbol,title,body,button='') { return `<div class="empty-state">${icon(symbol)}<h2>${t(title)}</h2><p>${t(body)}</p>${button}</div>`; }
 function planPage() {
   const preferences=state.preferences??defaults;
-  return `<div class="container">${pageHead('planEyebrow','planTitle','planBody')}<section class="section planner-layout"><div class="panel"><h2>${t('planFormTitle')}</h2><form id="preferences-form"><div class="form-section"><h3>${t('interests')}</h3><p class="helper">${t('interestsHelp')}</p><div class="choice-grid">${interests.map(interest=>`<label class="choice"><input type="checkbox" name="interests" value="${interest}" ${preferences.interests.includes(interest)?'checked':''}>${icon(interest)}${t(interest)}</label>`).join('')}</div></div><div class="form-section"><h3>${t('travelingWith')}</h3><div class="choice-grid">${['solo','couple','family','friends'].map(group=>`<label class="choice"><input type="radio" name="group" value="${group}" ${preferences.group===group?'checked':''}>${t(group)}</label>`).join('')}</div></div><div class="form-section"><label for="daily-budget">${t('dailyBudgetLabel')}</label><div class="range-label"><span>${money(30)}</span><strong id="budget-output">${money(preferences.budget)}</strong><span>${money(300)}+</span></div><input type="range" id="daily-budget" name="budget" min="30" max="300" step="5" value="${preferences.budget}"><p class="helper">${t('longBudgetNote')}</p></div><div class="form-section form-grid"><label>${t('tripLength')}<select name="days">${[2,3,4,5,7,10,14,21,30].map(days=>`<option value="${days}" ${Number(preferences.days)===days?'selected':''}>${t('days',{count:days})}</option>`).join('')}</select></label><label>${t('monthLabel')}<select name="month">${monthOptions(preferences.month,false)}</select></label></div><div class="error-text form-error" id="preferences-error" role="alert"></div><button class="btn" type="submit">${t('planSave')}${icon('arrow')}</button><p class="helper">${t(state.user?'planAccount':'planGuest')}</p></form></div><aside class="planner-aside">${photo(find('ha-long-bay')??destinations[0])}<div class="aside-copy"><p class="eyebrow">${t('madeFor')}</p><h2>${t('planAsideTitle')}</h2><p>${t('planAsideBody')}</p><div class="aside-rule"></div><div class="mini-stat"><span>${t('countries')}<br><strong>${new Set(destinations.map(item=>item.countryCode)).size}</strong></span><span>${t('curatedPlaces')}<br><strong>${destinations.length}</strong></span></div></div></aside></section></div>`;
+  return `<div class="container">${pageHead('planEyebrow','planTitle','planBody')}<section class="section planner-layout"><div class="panel"><h2>${t('planFormTitle')}</h2><form id="preferences-form"><div class="form-section"><h3>${t('interests')}</h3><p class="helper">${t('interestsHelp')}</p><div class="choice-grid">${interests.map(interest=>`<label class="choice"><input type="checkbox" name="interests" value="${interest}" ${preferences.interests.includes(interest)?'checked':''}>${icon(interest)}${t(interest)}</label>`).join('')}</div></div><div class="form-section"><h3>${t('travelingWith')}</h3><div class="choice-grid">${['solo','couple','family','friends'].map(group=>`<label class="choice"><input type="radio" name="group" value="${group}" ${preferences.group===group?'checked':''}>${t(group)}</label>`).join('')}</div></div><div class="form-section"><label for="daily-budget">${t('dailyBudgetLabel')}</label><div class="range-label"><span>${money(30)}</span><strong id="budget-output">${money(preferences.budget)}</strong><span>${money(300)}+</span></div><input type="range" id="daily-budget" name="budget" min="30" max="300" step="5" value="${preferences.budget}"><p class="helper">${t('longBudgetNote')}</p></div><div class="form-section form-grid"><label>${t('tripLength')}<select name="days">${[2,3,4,5,7,10,14,21,30].map(days=>`<option value="${days}" ${Number(preferences.days)===days?'selected':''}>${t('days',{count:days})}</option>`).join('')}</select></label><label>${t('monthLabel')}<select name="month">${monthOptions(preferences.month,false)}</select></label></div><div class="error-text form-error" id="preferences-error" role="alert"></div><button class="btn" type="submit">${t('planSave')}${icon('arrow')}</button><p class="helper">${t(state.user?(state.cloudReady?'planAccount':'planPending'):'planGuest')}</p></form></div><aside class="planner-aside">${photo(find('ha-long-bay')??destinations[0])}<div class="aside-copy"><p class="eyebrow">${t('madeFor')}</p><h2>${t('planAsideTitle')}</h2><p>${t('planAsideBody')}</p><div class="aside-rule"></div><div class="mini-stat"><span>${t('countries')}<br><strong>${new Set(destinations.map(item=>item.countryCode)).size}</strong></span><span>${t('curatedPlaces')}<br><strong>${destinations.length}</strong></span></div></div></aside></section></div>`;
 }
 function savedPage() {
   const selected=destinations.filter(destination=>state.favorites.includes(destination.id));
-  const body= !state.user?emptyState('heart','accountNeeded','authSavedBody',`<button class="btn" data-action="auth">${t('signIn')}${icon('arrow')}</button>`):!selected.length?emptyState('heart','savedEmpty','savedEmptyBody',`<a class="btn" href="/search.html" data-nav>${t('explore')}${icon('arrow')}</a>`):`<div class="compare-bar"><span>${t('compareHelp')} · ${t('selected',{count:state.compare.length})}</span><button class="btn small" data-action="compare" ${state.compare.length<2?'disabled':''}>${t('compare')}${icon('arrow')}</button></div><div class="destination-grid">${selected.map(destination=>card(destination,false,true)).join('')}</div><p class="result-note">${t('estimateNote')}</p>`;
+  const body= !state.user?emptyState('heart','accountNeeded','authSavedBody',`<button class="btn" data-action="auth">${t('signIn')}${icon('arrow')}</button>`):!state.cloudReady&&!selected.length?emptyState('heart','travelDataPending','travelDataPendingBody',syncRetryButton()):!selected.length?emptyState('heart','savedEmpty','savedEmptyBody',`<a class="btn" href="/search.html" data-nav>${t('explore')}${icon('arrow')}</a>`):`<div class="compare-bar"><span>${t('compareHelp')} · ${t('selected',{count:state.compare.length})}</span><button class="btn small" data-action="compare" ${state.compare.length<2?'disabled':''}>${t('compare')}${icon('arrow')}</button></div><div class="destination-grid">${selected.map(destination=>card(destination,false,true)).join('')}</div><p class="result-note">${t('estimateNote')}</p>`;
   return `<div class="container">${pageHead('savedEyebrow','savedTitle','savedBody')}<section class="section">${body}</section></div>`;
 }
 function destinationPage() {
@@ -163,7 +180,7 @@ function summaryLines() {
 function demoNotice() {return `<div class="notice">${icon('info')}<div><strong>${t('demoNotice')}</strong><p>${t('demoNoticeBody')}</p></div></div>`;}
 function bookingPage() {
   initBooking();
-  if(confirmedBooking) return confirmationPage(confirmedBooking);
+  if(confirmedBooking&&state.user?.id===confirmedBookingOwner) return confirmationPage(confirmedBooking);
   const destination=find(bookingDraft.destinationId);
   const form=bookingStep===1?`<form id="booking-form" novalidate><div class="form-grid"><label class="span-2">${t('destination')}<select name="destinationId">${destinations.map(item=>`<option value="${item.id}" ${item.id===destination.id?'selected':''}>${escape(localized(item.name))}, ${escape(localized(item.country))}</option>`).join('')}</select></label><label class="span-2">${t('date')}<input type="date" name="date" value="${bookingDraft.date}" min="${today()}" max="${maxDate()}" required></label><label>${t('adults')}<input type="number" name="adults" min="1" max="12" step="1" value="${bookingDraft.adults}" required></label><label>${t('children')}<input type="number" name="children" min="0" max="12" step="1" value="${bookingDraft.children}" required></label><p class="helper span-2">${t('childrenHelp')} ${t('qtyHelp')}</p><label class="span-2">${t('notes')}<textarea name="notes" maxlength="500" placeholder="${t('notesPlaceholder')}">${escape(bookingDraft.notes)}</textarea></label></div><div id="booking-error" class="error-text form-error" role="alert"></div><div class="form-actions"><span></span><button class="btn" type="submit">${t('nextReview')}${icon('arrow')}</button></div></form>`:`<form id="checkout-form" novalidate><div class="stack"><div><h3>${escape(localized(destination.name))}, ${escape(localized(destination.country))}</h3><div class="summary-line"><span>${t('date')}</span><strong>${dateLabel(bookingDraft.date)}</strong></div><div class="summary-line"><span>${t('travelerCount',{count:Number(bookingDraft.adults)+Number(bookingDraft.children)})}</span><strong>${money(bookingPrice())}</strong></div>${bookingDraft.notes?`<p class="helper">${t('notes')}: ${escape(bookingDraft.notes)}</p>`:''}</div>${demoNotice()}<label class="choice"><input name="demoAgreement" type="checkbox" required>${t('demoAgreement')}</label>${!state.user?`<p class="helper">${t('bookingAuth')}</p>`:''}<div id="booking-error" class="error-text" role="alert"></div><div class="form-actions"><button class="btn outline" type="button" data-action="booking-back">${t('back')}</button><button class="btn" type="submit">${t('confirmDemo')}${icon('check')}</button></div></div></form>`;
   return `<div class="container">${pageHead('bookingEyebrow','bookingTitle','bookingBody')}<section class="section booking-layout"><div class="panel"><div class="checkout-step"><span class="${bookingStep===1?'active':''}">01 · ${t('tripDetails')}</span>${icon('chevron')}<span class="${bookingStep===2?'active':''}">02 · ${t('review')}</span></div>${form}</div><aside class="booking-summary">${photo(destination,'',true)}<div class="summary-body"><p class="eyebrow">${t('demoTicket')}</p><h3>${escape(localized(destination.name))}</h3><div id="summary-lines">${summaryLines()}</div><p class="helper">${t('demoNotice')}</p></div></aside></section></div>`;
@@ -173,7 +190,7 @@ function confirmationPage(booking) {
   return `<div class="container"><section class="section confirmation"><div class="success-mark">${icon('check')}</div><p class="eyebrow flex">${t('confirmation')}</p><h1>${t('demoComplete')}</h1><p>${t('demoCompleteBody')}</p><div class="panel"><span class="pill">${icon('ticket')}${t('demoStatus')}</span><div class="summary-line"><span>${t('reference')}</span><strong>${escape(booking.id)}</strong></div><div class="summary-line"><span>${t('destination')}</span><strong>${escape(localized(destination.name))}</strong></div><div class="summary-line"><span>${t('date')}</span><strong>${dateLabel(booking.date)}</strong></div><div class="summary-line"><span>${t('travelerCount',{count:booking.adults+booking.children})}</span><strong>${money(booking.total)}</strong></div>${demoNotice()}</div><div class="flex"><button class="btn" data-action="receipt" data-id="${booking.id}">${icon('download')}${t('downloadReceipt')}</button><a class="btn outline" href="/history.html" data-nav>${t('viewTickets')}${icon('arrow')}</a></div></section></div>`;
 }
 function ticketsPage() {
-  const body=!state.user?emptyState('ticket','accountNeeded','bookingAuth',`<button class="btn" data-action="auth">${t('signIn')}${icon('arrow')}</button>`):!state.bookings.length?emptyState('ticket','ticketsEmpty','ticketsEmptyBody',`<a class="btn" href="/search.html" data-nav>${t('explore')}${icon('arrow')}</a>`):`<div class="booking-list">${[...state.bookings].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(booking=>{const destination=find(booking.destinationId);if(!destination)return '';return `<article class="booking-row">${photo(destination)}<div><span class="pill ${booking.status==='cancelled'?'badge-cancelled':''}">${t(booking.status==='cancelled'?'cancelled':'demoStatus')}</span><h3><a href="/destination.html?id=${destination.id}" data-nav>${escape(localized(destination.name))}</a></h3><div class="meta"><span>${dateLabel(booking.date)}</span><span>${t('travelerCount',{count:booking.adults+booking.children})}</span></div><small class="subtext">${escape(booking.id)}</small></div><div><div class="booking-total">${money(booking.total)}</div><div class="row-actions"><button class="btn outline small" data-action="receipt" data-id="${booking.id}">${icon('download')}${t('downloadReceipt')}</button>${booking.status!=='cancelled'?`<button class="text-link" data-action="cancel" data-id="${booking.id}">${t('cancelBooking')}</button>`:''}</div></div></article>`;}).join('')}</div><div class="booking-note">${icon('info')}${t('noCharge')}</div>`;
+  const body=!state.user?emptyState('ticket','accountNeeded','bookingAuth',`<button class="btn" data-action="auth">${t('signIn')}${icon('arrow')}</button>`):!state.cloudReady&&!state.bookings.length?emptyState('ticket','travelDataPending','travelDataPendingBody',syncRetryButton()):!state.bookings.length?emptyState('ticket','ticketsEmpty','ticketsEmptyBody',`<a class="btn" href="/search.html" data-nav>${t('explore')}${icon('arrow')}</a>`):`<div class="booking-list">${[...state.bookings].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(booking=>{const destination=find(booking.destinationId);if(!destination)return '';return `<article class="booking-row">${photo(destination)}<div><span class="pill ${booking.status==='cancelled'?'badge-cancelled':''}">${t(booking.status==='cancelled'?'cancelled':'demoStatus')}</span><h3><a href="/destination.html?id=${destination.id}" data-nav>${escape(localized(destination.name))}</a></h3><div class="meta"><span>${dateLabel(booking.date)}</span><span>${t('travelerCount',{count:booking.adults+booking.children})}</span></div><small class="subtext">${escape(booking.id)}</small></div><div><div class="booking-total">${money(booking.total)}</div><div class="row-actions"><button class="btn outline small" data-action="receipt" data-id="${booking.id}">${icon('download')}${t('downloadReceipt')}</button>${booking.status!=='cancelled'?`<button class="text-link" data-action="cancel" data-id="${booking.id}">${t('cancelBooking')}</button>`:''}</div></div></article>`;}).join('')}</div><div class="booking-note">${icon('info')}${t('noCharge')}</div>`;
   return `<div class="container">${pageHead('ticketsEyebrow','ticketsTitle','ticketsBody')}<section class="section">${body}</section></div>`;
 }
 function aboutPage() {
@@ -193,6 +210,7 @@ function render() {
   $$('img').forEach(img=>{img.setAttribute('src',localUrl(img.getAttribute('src')));img.addEventListener('error',()=>{if(!img.src.endsWith('/assets/fallback.svg'))img.src=localUrl('/assets/fallback.svg');},{once:true});});
 }
 function navigate(url,replace=false) {
+  pendingAction=null;
   closeModal();
   state.menu=false;
   const target=new URL(localUrl(url),location.href);
@@ -203,39 +221,113 @@ function navigate(url,replace=false) {
   else window.scrollTo({top:0,behavior:'instant'});
   $('#main').focus({preventScroll:true});
 }
+function changeAccount(user) {
+  const previousId=state.user?.id??null;
+  const nextId=user?.id??null;
+  if(previousId===nextId)return false;
+  accountEpoch++;syncRequest++;
+  state.user=user??null;state.favorites=[];state.bookings=[];state.compare=[];
+  state.preferences=user?null:readLocal('vacasia-preferences',null);
+  state.cloudReady=!user;state.syncWarning=user?{code:'sync_pending'}:null;state.syncBusy=false;
+  confirmedBooking=null;confirmedBookingOwner=null;
+  // A guest's checkout can continue after signing in. A signed-in account's draft is private to that account.
+  if(previousId){bookingDraft=null;bookingStep=1;pendingAction=null;}
+  return true;
+}
+function onFirebaseAuthChange({user}) {
+  if((state.user?.id??null)===(user?.id??null))return;
+  if(state.authBusy){
+    if(authAttemptUserId===undefined&&user)authAttemptUserId=user.id;
+    else if(authAttemptUserId!==undefined&&authAttemptUserId!==(user?.id??null))authIntent++;
+  }else if(!logoutBusy||user)authIntent++;
+  changeAccount(user);
+  if(state.authBusy){render();return;}
+  closeModal();render();
+  if(user)void retrySync(true);
+}
 async function api(path,body,method='POST') {
-  if(cloudApi){try{const result=await cloudApi(path,body,method);state.online=true;return result;}catch(error){if(error.code==='auth_required'){applySession({user:null,favorites:[],bookings:[]});closeModal();render();}throw error;}}
+  if(logoutBusy&&path!=='/api/logout')throw {code:'auth_changed'};
+  const epoch=accountEpoch,intent=authIntent;
+  const changesAuth=['/api/register','/api/login','/api/google','/api/logout'].includes(path);
+  const stillCurrent=()=>epoch===accountEpoch&&intent===authIntent;
+  const checkResponse=()=>{if(!changesAuth&&!stillCurrent())throw {code:'auth_changed'};};
+  if(cloudApi){try{const expectedUserId=path==='/api/session'||['/api/register','/api/login','/api/google'].includes(path)?undefined:state.user?.id;const result=await cloudApi(path,body,method,expectedUserId);checkResponse();if(stillCurrent()){state.online=true;state.connectionError=null;}return result;}catch(error){if(!changesAuth&&!stillCurrent())throw {code:'auth_changed'};if(stillCurrent()&&error.code==='auth_required'){applySession({user:null,favorites:[],bookings:[]});closeModal();render();}else if(stillCurrent()&&state.user&&error.code?.startsWith('store_')){state.cloudReady=false;state.syncWarning=error;refreshAccountStatus();}throw error;}}
   let response;
-  try {response=await fetch(localUrl(path),{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});} catch {throw {code:'offline'};}
+  try {response=await fetch(localUrl(path),{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});} catch {checkResponse();throw {code:'offline'};}
   let result;
-  try {result=await response.json();} catch {throw {code:path==='/api/session'&&response.status!==500?'backend_missing':'errorGeneric'};}
+  try {result=await response.json();} catch {checkResponse();throw {code:path==='/api/session'&&response.status!==500?'backend_missing':'errorGeneric'};}
+  checkResponse();
   if(!response.ok) {if(response.status===401&&result.code==='auth_required'){applySession({user:null,favorites:[],bookings:[]});closeModal();render();}throw result;}
   state.online=true;
   return result;
 }
 function applySession(session) {
-  state.user=session.user;
-  state.favorites=session.favorites??[];
-  state.bookings=session.bookings??[];
+  const sameUser=Boolean(session.user&&state.user?.id===session.user.id);
+  changeAccount(session.user);
+  state.user=session.user??null;
+  state.cloudReady=session.cloudReady!==false;
+  state.syncWarning=session.syncWarning??(state.cloudReady?null:{code:'store_unavailable'});
+  if(state.cloudReady||!sameUser){state.favorites=session.favorites??[];state.bookings=session.bookings??[];}
   state.compare=[];
-  if(session.user) state.preferences=session.preferences??null;
+  if(session.user){if(state.cloudReady||!sameUser)state.preferences=session.preferences??null;}
   else state.preferences=readLocal('vacasia-preferences',null);
 }
 function showToast(message) {
   clearTimeout(toastTimer);const toast=$('#toast');toast.textContent=message;toast.classList.add('visible');toastTimer=setTimeout(()=>toast.classList.remove('visible'),3600);
 }
 function errorMessage(error) {
-  const codes=['invalid_input','invalid_credentials','email_exists','auth_required','rate_limited','invalid_date','invalid_quantity','invalid_destination','offline','firebase_setup'];
+  const codes=['invalid_input','invalid_credentials','email_exists','auth_required','auth_changed','sync_pending','rate_limited','invalid_date','invalid_quantity','invalid_destination','offline','firebase_setup','auth_disabled','auth_domain','auth_config','auth_cancelled','auth_provider_conflict','auth_unsupported','auth_popup_blocked','auth_profile','store_permission','store_unavailable','store_setup','store_quota'];
   return t(codes.includes(error?.code)?error.code:'errorGeneric');
 }
 function requireAccount(action) {
-  if(state.user) return action();
+  if(state.user){if(!state.cloudReady){pendingAction=action;showToast(t('cloudSyncPendingTitle'));return;}return action();}
   pendingAction=action;openModal({type:'auth',tab:'login'});
+}
+function setAuthBusy(busy) {
+  state.authBusy=busy;
+  $$('#auth-form button,.auth-tabs button,[data-action="google-auth"]').forEach(button=>button.disabled=busy);
+}
+function finishAuthAttempt() {
+  setAuthBusy(false);authAttemptUserId=undefined;
+  if(state.user&&state.user.id!==authAttemptBaselineId&&modalState?.type==='auth'){closeModal();render();}
+  if(state.user&&!state.cloudReady&&state.syncWarning?.code==='sync_pending')void retrySync(true);
+}
+async function finishSignIn(session,successKey,guestPreferences,intent) {
+  if(intent!==authIntent||authAttemptUserId!==undefined&&session.user&&session.user.id!==authAttemptUserId)throw {code:'auth_changed'};
+  if(session.redirecting){showToast(t('googleRedirecting'));return;}
+  const continuation=pendingAction;
+  applySession(session);
+  const epoch=accountEpoch;
+  if(guestPreferences&&!session.preferences&&state.cloudReady){
+    try{const result=await api('/api/preferences',guestPreferences,'PUT');state.preferences=result.preferences;}catch(error){if(error.code==='auth_changed')throw error;}
+  }
+  if(epoch!==accountEpoch||intent!==authIntent)throw {code:'auth_changed'};
+  closeModal();render();
+  if(!state.cloudReady){pendingAction=continuation;showToast(t('signedInSyncPending'));return;}
+  showToast(t(successKey));
+  if(continuation)await continuation();
+}
+async function retrySync(automatic=false) {
+  if(state.syncBusy)return;
+  const request=++syncRequest,epoch=accountEpoch,intent=authIntent;
+  state.syncBusy=true;refreshAccountStatus();
+  const retryButtons=$$('[data-action="retry-sync"]');retryButtons.forEach(button=>button.disabled=true);
+  try{
+    const session=await api('/api/session',undefined,'GET');
+    if(epoch!==accountEpoch||intent!==authIntent)throw {code:'auth_changed'};
+    applySession(session);state.online=true;state.connectionError=null;
+    const continuation=state.user&&state.cloudReady?pendingAction:null;
+    if(continuation)pendingAction=null;
+    render();if(modalState)renderModal(false);
+    if(!automatic||!state.cloudReady)showToast(t(state.cloudReady?'syncRestored':'signedInSyncPending'));
+    if(continuation)await continuation();
+  }catch(error){if(error.code==='auth_changed')return;if(epoch===accountEpoch&&intent===authIntent){state.connectionError=error;state.online=false;refreshAccountStatus();showToast(errorMessage(error));}}
+  finally{if(request===syncRequest){state.syncBusy=false;refreshAccountStatus();$$('[data-action="retry-sync"]').forEach(button=>{button.disabled=false;button.textContent=t(state.user?'retrySync':'retryConnection');});}}
 }
 async function savePlace(id) {
   return requireAccount(async()=>{
     const saved=!state.favorites.includes(id);
-    try {const result=await api('/api/favorites',{destinationId:id,saved},'PUT');state.favorites=result.favorites;state.compare=state.compare.filter(item=>state.favorites.includes(item));render();showToast(t(saved?'placeSaved':'placeRemoved'));} catch(error){render();showToast(errorMessage(error));}
+    try {const result=await api('/api/favorites',{destinationId:id,saved},'PUT');state.favorites=result.favorites;state.compare=state.compare.filter(item=>state.favorites.includes(item));render();showToast(t(saved?'placeSaved':'placeRemoved'));} catch(error){if(error.code==='auth_changed')return;render();showToast(errorMessage(error));}
   });
 }
 function modalContents() {
@@ -243,9 +335,9 @@ function modalContents() {
   const close=`<button class="icon-button close-modal" data-action="close-modal" aria-label="${t('close')}">${icon('close')}</button>`;
   if(modalState.type==='auth') {
     const register=modalState.tab==='register';
-    return `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">${close}${brand()}<h2 id="modal-title">${t('authTitle')}</h2><p class="subtext">${t('authBody')}</p><div class="auth-tabs" role="tablist"><button role="tab" aria-selected="${!register}" data-action="auth-tab" data-tab="login" class="${register?'':'active'}">${t('signIn')}</button><button role="tab" aria-selected="${register}" data-action="auth-tab" data-tab="register" class="${register?'active':''}">${t('signUp')}</button></div><form id="auth-form" class="auth-form" novalidate>${register?`<label>${t('fullName')}<input type="text" name="name" autocomplete="name" minlength="2" maxlength="60" placeholder="${t('nameHint')}" required></label>`:''}<label>${t('email')}<input type="email" name="email" autocomplete="email" maxlength="254" placeholder="${t('emailHint')}" required></label><label>${t('password')}<input type="password" name="password" autocomplete="${register?'new-password':'current-password'}" minlength="8" maxlength="128" required>${register?`<span class="helper">${t('passwordHint')}</span>`:''}</label><div class="error-text" id="auth-error" role="alert"></div><button type="submit" class="btn">${t(register?'signUp':'signIn')}${icon('arrow')}</button></form><p class="helper">${t('authFootnote')}</p></div>`;
+    return `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">${close}${brand()}<h2 id="modal-title">${t('authTitle')}</h2><p class="subtext">${t('authBody')}</p>${firebaseConfigured?`<button class="btn google-button" data-action="google-auth" ${state.authBusy?'disabled':''}><svg aria-hidden="true" viewBox="0 0 48 48"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.7-.4-4.1H24v7.8h11.1a9.4 9.4 0 0 1-4.1 6.2v5h6.7c3.9-3.6 5.9-8.8 5.9-14.9Z"/><path fill="#34A853" d="M24 44c5.6 0 10.3-1.9 13.7-5.1L31 33.9a12.5 12.5 0 0 1-18.6-6.5H5.5v5.2A20.7 20.7 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.4 27.4a12.4 12.4 0 0 1 0-7.8v-5.2H5.5a20 20 0 0 0 0 18.2l6.9-5.2Z"/><path fill="#EA4335" d="M24 11a11.1 11.1 0 0 1 7.9 3.1l5.9-5.9A19.8 19.8 0 0 0 24 3 20.7 20.7 0 0 0 5.5 14.4l6.9 5.2A12.3 12.3 0 0 1 24 11Z"/></svg>${t('continueGoogle')}</button><div class="auth-divider"><span>${t('continueEmail')}</span></div>`:''}<div class="auth-tabs" role="tablist"><button role="tab" aria-selected="${!register}" data-action="auth-tab" data-tab="login" class="${register?'':'active'}" ${state.authBusy?'disabled':''}>${t('signIn')}</button><button role="tab" aria-selected="${register}" data-action="auth-tab" data-tab="register" class="${register?'active':''}" ${state.authBusy?'disabled':''}>${t('signUp')}</button></div><form id="auth-form" class="auth-form" novalidate>${register?`<label>${t('fullName')}<input type="text" name="name" autocomplete="name" minlength="2" maxlength="60" placeholder="${t('nameHint')}" required></label>`:''}<label>${t('email')}<input type="email" name="email" autocomplete="email" maxlength="254" placeholder="${t('emailHint')}" required></label><label>${t('password')}<input type="password" name="password" autocomplete="${register?'new-password':'current-password'}" minlength="8" maxlength="128" required>${register?`<span class="helper">${t('passwordHint')}</span>`:''}</label><div class="error-text" id="auth-error" role="alert"></div><button type="submit" class="btn" ${state.authBusy?'disabled':''}>${t(register?'signUp':'signIn')}${icon('arrow')}</button></form><p class="helper">${t('authFootnote')}</p></div>`;
   }
-  if(modalState.type==='account')return `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">${close}<h2 id="modal-title">${t('profileTitle')}</h2><p class="subtext">${escape(t('memberEmail',{email:state.user.email}))}</p><div class="account-menu"><form id="profile-form" class="auth-form" novalidate><label>${t('fullName')}<input name="name" value="${escape(state.user.name)}" minlength="2" maxlength="60" required autocomplete="name"></label><div class="error-text" id="profile-error" role="alert"></div><button class="btn" type="submit">${t('updateProfile')}</button></form><a class="btn outline" href="/history.html" data-nav>${icon('ticket')}${t('tickets')}</a><button class="text-link" data-action="logout">${t('signOut')}</button></div></div>`;
+  if(modalState.type==='account')return `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">${close}<h2 id="modal-title">${t('profileTitle')}</h2><p class="subtext">${escape(t('memberEmail',{email:state.user.email}))}</p>${!state.cloudReady?`<div class="sync-message" role="status"><strong>${t('cloudSyncPendingTitle')}</strong><p>${errorMessage(state.syncWarning)} ${t('cloudSyncPendingBody')}</p>${syncRetryButton()}</div>`:''}<div class="account-menu"><form id="profile-form" class="auth-form" novalidate><label>${t('fullName')}<input name="name" value="${escape(state.user.name)}" minlength="2" maxlength="60" required autocomplete="name"></label><div class="error-text" id="profile-error" role="alert"></div><button class="btn" type="submit" ${!state.cloudReady?'disabled':''}>${t('updateProfile')}</button></form><a class="btn outline" href="/history.html" data-nav>${icon('ticket')}${t('tickets')}</a><button class="text-link" data-action="logout">${t('signOut')}</button></div></div>`;
   if(modalState.type==='compare') {
     const selected=state.compare.map(find).filter(Boolean);
     return `<div class="modal compare-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">${close}<h2 id="modal-title">${t('compareTitle')}</h2><p class="subtext">${t('estimateNote')}</p><div class="compare-scroll"><table class="compare-table"><thead><tr><th></th>${selected.map(destination=>`<th>${escape(localized(destination.name))}${photo(destination)}<small>${escape(localized(destination.country))}</small></th>`).join('')}</tr></thead><tbody>${[['estimated',destination=>money(destination.dailyBudget)+' '+t('perDay')],['bestFor',destination=>destination.tags.map(tag=>t(tag)).join(', ')],['bestSeason',destination=>seasonLabel(destination)],['suggestedStay',destination=>t('compareDays',{count:destination.duration})],['demoTicket',destination=>money(destination.ticketPrice)+' '+t('perAdult')]].map(([key,value])=>`<tr><td>${t(key)}</td>${selected.map(destination=>`<td>${value(destination)}</td>`).join('')}</tr>`).join('')}<tr><td></td>${selected.map(destination=>`<td><a class="btn small" href="/destination.html?id=${destination.id}" data-nav>${t('details')}${icon('arrow')}</a></td>`).join('')}</tr></tbody></table></div></div>`;
@@ -289,7 +381,8 @@ function changeLanguage() {
   const snapshots=formSnapshots();state.lang=state.lang==='en'?'vi':'en';writeLocal('vacasia-language',state.lang);render();renderModal(false);restoreForms(snapshots);
 }
 function downloadReceipt(id) {
-  const booking=state.bookings.find(item=>item.id===id)??confirmedBooking;if(!booking)return;
+  if(!state.user)return;
+  const booking=state.bookings.find(item=>item.id===id)??(confirmedBookingOwner===state.user.id&&confirmedBooking?.id===id?confirmedBooking:null);if(!booking)return;
   const destination=find(booking.destinationId);
   const lines=[t('receiptTitle'),'='.repeat(45),t('noCharge'),'',`${t('reference')}: ${booking.id}`,`${t('destination')}: ${localized(destination.name)}, ${localized(destination.country)}`,`${t('date')}: ${dateLabel(booking.date)}`,`${t('adults')}: ${booking.adults}`,`${t('children')}: ${booking.children}`,`${t('total')}: ${money(booking.total)}`,`${t(booking.status==='cancelled'?'cancelled':'demoStatus')}`,booking.notes?`${t('notes')}: ${booking.notes}`:'','',t('demoNoticeBody')];
   const url=URL.createObjectURL(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/plain;charset=utf-8'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=`VacAsia-demo-${booking.id}.txt`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -300,9 +393,10 @@ function updateSearch(form,sort=null) {
   navigate(`/search.html?${params}`);
 }
 async function submitWithBusy(form,operation,errorTarget) {
+  if(!form)return;
   const button=$('[type="submit"]',form);const old=button?.innerHTML;if(button){button.disabled=true;button.textContent=t('loading');}
   if($(errorTarget))$(errorTarget).textContent='';
-  try{await operation();}catch(error){if($(errorTarget))$(errorTarget).textContent=errorMessage(error);else showToast(errorMessage(error));}
+  try{await operation();}catch(error){if(error.code==='auth_changed')return;if($(errorTarget))$(errorTarget).textContent=errorMessage(error);else showToast(errorMessage(error));}
   finally{if(button?.isConnected){button.disabled=false;button.innerHTML=old;}}
 }
 document.addEventListener('click',async event=>{
@@ -318,19 +412,32 @@ document.addEventListener('click',async event=>{
   else if(action==='account')openModal({type:'account'});
   else if(action==='close-modal')closeModal();
   else if(action==='auth-tab'){modalState.tab=button.dataset.tab;renderModal();}
+  else if(action==='google-auth'){
+    if(!firebaseConfigured||state.authBusy)return;
+    const guestPreferences=!state.user?state.preferences:null;
+    const intent=++authIntent;authAttemptUserId=undefined;authAttemptBaselineId=state.user?.id??null;
+    const old=button.innerHTML;setAuthBusy(true);button.textContent=t('loading');
+    if($('#auth-error'))$('#auth-error').textContent='';
+    try{await finishSignIn(await api('/api/google',{language:state.lang}),'signedIn',guestPreferences,intent);}catch(error){if(!['auth_cancelled','auth_changed'].includes(error.code)){if($('#auth-error'))$('#auth-error').textContent=errorMessage(error);else showToast(errorMessage(error));}}
+    finally{finishAuthAttempt();if(button.isConnected)button.innerHTML=old;}
+  }
+  else if(action==='retry-sync')await retrySync();
   else if(action==='save')await savePlace(id);
   else if(action==='category'){state.category=button.dataset.category;render();$(`[data-category="${state.category}"]`)?.focus({preventScroll:true});}
   else if(action==='reset-filters')navigate('/search.html');
   else if(action==='compare')openModal({type:'compare'});
-  else if(action==='booking-back'){bookingStep=1;render();}
+  else if(action==='booking-back'){pendingAction=null;bookingStep=1;render();}
   else if(action==='receipt')downloadReceipt(id);
   else if(action==='cancel')openModal({type:'cancel',id});
   else if(action==='confirm-cancel'){
     button.disabled=true;
-    try{const result=await api(`/api/bookings/${encodeURIComponent(id)}`,undefined,'DELETE');state.bookings=result.bookings;closeModal();render();showToast(t('bookingCancelled'));}catch(error){$('#cancel-error').textContent=errorMessage(error);button.disabled=false;}
+    try{const result=await api(`/api/bookings/${encodeURIComponent(id)}`,undefined,'DELETE');state.bookings=result.bookings;closeModal();render();showToast(t('bookingCancelled'));}catch(error){if(error.code!=='auth_changed'&&$('#cancel-error'))$('#cancel-error').textContent=errorMessage(error);if(button.isConnected)button.disabled=false;}
   }
   else if(action==='logout'){
-    button.disabled=true;try{await api('/api/logout',{});applySession({user:null,favorites:[],bookings:[]});closeModal();render();showToast(t('signedOut'));}catch(error){showToast(errorMessage(error));button.disabled=false;}
+    if(logoutBusy)return;
+    const intent=++authIntent;logoutBusy=true;button.disabled=true;
+    try{await api('/api/logout',{});if(intent!==authIntent)throw {code:'auth_changed'};applySession({user:null,favorites:[],bookings:[]});closeModal();render();showToast(t('signedOut'));}catch(error){if(error.code!=='auth_changed')showToast(errorMessage(error));if(button.isConnected)button.disabled=false;}
+    finally{logoutBusy=false;if(state.user&&!state.cloudReady&&state.syncWarning?.code==='sync_pending')void retrySync(true);}
   }
 });
 document.addEventListener('submit',async event=>{
@@ -339,17 +446,21 @@ document.addEventListener('submit',async event=>{
   if(form.id==='hero-search'){const params=new URLSearchParams(values);navigate(`/search.html?${params}`);}
   else if(form.id==='search-filters')updateSearch(form);
   else if(form.id==='auth-form'){
+    if(state.authBusy)return;
     const register=modalState.tab==='register';
     if(register&&(String(values.get('name')).trim().length<2||String(values.get('name')).trim().length>60)){$('#auth-error').textContent=t('invalidName');return;}
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(values.get('email')))){$('#auth-error').textContent=t('invalidEmail');return;}
     if(String(values.get('password')).length<8||String(values.get('password')).length>128){$('#auth-error').textContent=t('invalidPassword');return;}
-    await submitWithBusy(form,async()=>{const guestPreferences=!state.user?state.preferences:null;const session=await api(register?'/api/register':'/api/login',Object.fromEntries(values));const continuation=pendingAction;applySession(session);if(guestPreferences&&!session.preferences){try{const result=await api('/api/preferences',guestPreferences,'PUT');state.preferences=result.preferences;}catch{}}closeModal();render();showToast(t(register?'registered':'signedIn'));if(continuation)await continuation();},'#auth-error');
+    const intent=++authIntent;authAttemptUserId=undefined;authAttemptBaselineId=state.user?.id??null;setAuthBusy(true);
+    try{await submitWithBusy(form,async()=>{const guestPreferences=!state.user?state.preferences:null;const session=await api(register?'/api/register':'/api/login',Object.fromEntries(values));await finishSignIn(session,register?'registered':'signedIn',guestPreferences,intent);},'#auth-error');}finally{finishAuthAttempt();}
   }
   else if(form.id==='profile-form'){
     if(String(values.get('name')).trim().length<2||String(values.get('name')).trim().length>60){$('#profile-error').textContent=t('invalidName');return;}
-    await submitWithBusy(form,async()=>{const result=await api('/api/profile',{name:values.get('name')});state.user=result.user;closeModal();render();showToast(t('profileSaved'));},'#profile-error');
+    if(!state.cloudReady){$('#profile-error').textContent=errorMessage(state.syncWarning);return;}
+    await submitWithBusy(form,async()=>{const result=await api('/api/profile',{name:values.get('name')});state.user=result.user;state.syncWarning=result.syncWarning??null;closeModal();render();showToast(t('profileSaved'));},'#profile-error');
   }
   else if(form.id==='preferences-form'){
+    if(state.user&&!state.cloudReady){$('#preferences-error').textContent=errorMessage(state.syncWarning);return;}
     if(!values.getAll('interests').length){$('#preferences-error').textContent=t('interestsRequired');return;}
     const preferences={budget:Number(values.get('budget')),days:Number(values.get('days')),group:values.get('group'),month:Number(values.get('month')),interests:values.getAll('interests')};
     await submitWithBusy(form,async()=>{if(state.user)await api('/api/preferences',preferences,'PUT');state.preferences=preferences;if(!state.user)writeLocal('vacasia-preferences',preferences);navigate('/search.html?matches=1');showToast(t('planSaved'));},'#preferences-error');
@@ -362,7 +473,7 @@ document.addEventListener('submit',async event=>{
   }
   else if(form.id==='checkout-form'){
     if(!values.get('demoAgreement')){$('#booking-error').textContent=t('acknowledgeRequired');return;}
-    const complete=async()=>{await submitWithBusy($('#checkout-form'),async()=>{const result=await api('/api/bookings',bookingDraft);state.bookings=result.bookings;confirmedBooking=result.booking;render();window.scrollTo({top:0,behavior:'instant'});$('#main').focus({preventScroll:true});},'#booking-error');};
+    const complete=async()=>{await submitWithBusy($('#checkout-form'),async()=>{const result=await api('/api/bookings',bookingDraft);state.bookings=result.bookings;confirmedBooking=result.booking;confirmedBookingOwner=state.user.id;render();window.scrollTo({top:0,behavior:'instant'});$('#main').focus({preventScroll:true});},'#booking-error');};
     requireAccount(complete);
   }
 });
@@ -383,7 +494,7 @@ document.addEventListener('change',event=>{
     state.compare=input.checked?[...state.compare,input.dataset.compare]:state.compare.filter(id=>id!==input.dataset.compare);render();
   }
   else if(input.name==='destinationId'&&input.closest('#booking-form')){
-    bookingDraft.destinationId=input.value;history.replaceState({},'',localUrl(`/booking.html?id=${input.value}`));render();
+    pendingAction=null;bookingDraft.destinationId=input.value;history.replaceState({},'',localUrl(`/booking.html?id=${input.value}`));render();
   }
 });
 document.addEventListener('keydown',event=>{
@@ -396,19 +507,23 @@ document.addEventListener('keydown',event=>{
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
   }
 });
-window.addEventListener('popstate',()=>{closeModal();state.menu=false;render();});
+window.addEventListener('popstate',()=>{pendingAction=null;closeModal();state.menu=false;render();});
 window.addEventListener('storage',event=>{if(event.key==='vacasia-language'){state.lang=readLocal('vacasia-language','en')==='vi'?'vi':'en';render();renderModal(false);}});
 render();
 const {siteConfig}=await import('./siteConfig.js');
 try{
-  if(siteConfig.backend==='firebase'){const {firebaseApi}=await import('./firebaseAdapter.js');cloudApi=firebaseApi;}
+  if(siteConfig.backend==='firebase'){const {firebaseApi}=await import('./firebaseAdapter.js');cloudApi=firebaseApi;firebaseConfigured=Boolean(siteConfig.firebase?.apiKey&&siteConfig.firebase?.authDomain&&siteConfig.firebase?.projectId);}
   applySession(await api('/api/session',undefined,'GET'));state.online=true;
 }catch(error){
   if(siteConfig.backend==='auto'&&['backend_missing','not_found'].includes(error.code)){
-    try{const {firebaseApi}=await import('./firebaseAdapter.js');cloudApi=firebaseApi;applySession(await api('/api/session',undefined,'GET'));state.online=true;}catch{state.online=false;}
-  }else state.online=false;
+    try{const {firebaseApi}=await import('./firebaseAdapter.js');cloudApi=firebaseApi;firebaseConfigured=Boolean(siteConfig.firebase?.apiKey&&siteConfig.firebase?.authDomain&&siteConfig.firebase?.projectId);applySession(await api('/api/session',undefined,'GET'));state.online=true;}catch(cloudError){state.online=false;state.connectionError=cloudError;}
+  }else{state.online=false;state.connectionError=error;}
+}
+if(cloudApi){
+  try{const {subscribeFirebaseAuth}=await import('./firebaseAdapter.js');if(subscribeFirebaseAuth)authObserver=await subscribeFirebaseAuth(onFirebaseAuthChange);}catch(error){if(error.code!=='auth_changed'){state.online=false;state.connectionError=error;}}
 }
 render();
+if(modalState)renderModal(false);
 const initialPage=location.pathname.split('/').pop();
 if(initialPage==='login.html'||initialPage==='register.html')openModal({type:'auth',tab:initialPage==='register.html'?'register':'login'});
 if(initialPage==='profile.html'){if(state.user)openModal({type:'account'});else openModal({type:'auth',tab:'login'});}
