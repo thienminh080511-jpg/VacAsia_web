@@ -2,8 +2,9 @@
 
 Last checked: **October 10, 2026 (Asia/Bangkok)**.
 
-The source-code integration is implemented and locally verified. Cloud resource
-creation and production deployment must be distinguished from that verification.
+The source-code integration is implemented, locally verified, and deployed to
+the configured Firebase project. Production provider configuration and rules
+publication are recorded below.
 
 ## Current configuration
 
@@ -11,25 +12,18 @@ creation and production deployment must be distinguished from that verification.
 | --- | --- |
 | Website account backend | Explicit `backend: 'firebase'` in `server/siteConfig.js` |
 | Active web-app configuration | Currently the original `vacasia-27c13` project; `server/siteConfig.js` is the source of truth |
-| Requested new project | The user selected a new Firebase project named VacAsia under their Google account |
-| New project creation | Pending Google/Firebase authorization; no new project creation confirmed yet |
-| New project's Email/Password provider | Not yet confirmed |
-| New project's Google provider | Not yet confirmed |
-| New Firestore database, edition and region | Not yet created or confirmed |
-| Production rules and website deployment | No successful deployment of this update confirmed yet |
+| Firebase project | VacAsia (`vacasia-27c13`) |
+| Account used for production setup | M (`mmmm1990manez@gmail.com`) |
+| Email/Password provider | Enabled in Firebase Authentication |
+| Google provider | Enabled in Firebase Authentication |
+| Firestore database | `(default)`, Standard edition, Native mode, `nam5` region |
+| Production rules and website deployment | Published successfully on October 10, 2026 |
 
-The original project's public Authentication response reported
-`PASSWORD_LOGIN_DISABLED` for email/password and advertised Google as enabled.
-Administrative access to that project was unavailable under the supplied Google
-account. Its existing Hosting URL is
-[vacasia-27c13.web.app](https://vacasia-27c13.web.app).
-These checks do not establish that the new project or this update is live.
-
-The Firebase Console's new-project flow returned an API lookup error. The
-official Firebase CLI authorization route is being used instead. Once the new
-project is created, replace the full public config in `server/siteConfig.js`,
-enable both providers, create Firestore, deploy the rules/site and update the
-table above with the actual ID, edition, region and verified URL.
+The deployed website is available at
+[vacasia-27c13.web.app](https://vacasia-27c13.web.app). A cache-bypassed
+production check confirmed it serves `backend: 'firebase'` and the same public
+configuration as `server/siteConfig.js`. The Firebase CLI confirmed the rules
+were released and the Hosting version was finalized and released.
 
 ## Completed source changes
 
@@ -57,8 +51,8 @@ table above with the actual ID, edition, region and verified URL.
 | Security-rule behavior | 17 passing tests covering password/Google tokens, owner isolation, schemas, favorites/preferences, all 12 catalog totals, visit dates and cancellation |
 | Adapter with actual local SDK services | 3 passing Auth/Firestore integration tests covering email signup/login, Google-provider profiles, profile recovery and persisted travel data |
 | Total emulator result | **20 passed, 0 failed**, across 2 suites |
-| Live Google OAuth popup | Successful completed production flow not yet confirmed |
-| Live Firestore persistence | Not yet confirmed in the requested new project |
+| Live Google OAuth popup | Provider is enabled; an end-user popup flow was not exercised with a test visitor |
+| Live Firestore persistence | Rules deployed; an end-user write was not performed to avoid creating test production data |
 
 The emulator suite uses Firebase JS 13.0.0 and Firebase CLI 15.33.0. The website
 retains its original Firebase JS 9.22.0 CDN imports. Google emulator tests use a
